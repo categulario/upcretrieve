@@ -54,7 +54,7 @@ def extract_uniques(filename):
 def query_upcitemdb(data):
     count = 0
 
-    for chunk in chunks(data):
+    for chunk in chunks(data, size=1):
         r = requests.get('https://api.upcitemdb.com/prod/trial/lookup', params={
             'upc' : ','.join(filter(lambda x: x, chunk)),
         })
@@ -68,9 +68,10 @@ def query_upcitemdb(data):
                 print('TOO_FAST')
             elif code == 'EXCEED_LIMIT':
                 print('EXCEED_LIMIT')
-        print("X-RateLimit-Limit: {}".format(r.headers['X-RateLimit-Limit']))
-        print("X-RateLimit-Reset: {}".format(r.headers['X-RateLimit-Reset']))
-        print("X-RateLimit-Remaining: {}".format(r.headers['X-RateLimit-Remaining']))
+
+            print("X-RateLimit-Limit: {}".format(r.headers['X-RateLimit-Limit']))
+            print("X-RateLimit-Reset: {}".format(r.headers['X-RateLimit-Reset']))
+            print("X-RateLimit-Remaining: {}".format(r.headers['X-RateLimit-Remaining']))
 
     print('{} products found in upcitemdb.com'.format(count))
 
