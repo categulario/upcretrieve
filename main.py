@@ -3,6 +3,10 @@ import csv
 from pprint import pprint
 from itertools import zip_longest
 import requests
+from time import sleep
+from datetime import datetime
+import pickle
+import os
 
 def update_info(dest, source, addone=True):
     for key in dest.keys():
@@ -17,12 +21,6 @@ def fill_blanks(row):
         row['quantity1'] = 1
     elif type(row['quantity1']) == str:
         row['quantity1'] = int(row['quantity1'])
-
-def chunks(iterable, size=20):
-    "Collect data into fixed-length chunks or blocks"
-    # chunks('ABCDEFG', 3, 'x') --> ABC DEF Gxx"
-    args = [iter(iterable)] * size
-    return zip_longest(*args)
 
 def extract_uniques(filename):
     data = dict()
@@ -54,24 +52,44 @@ def extract_uniques(filename):
 def query_upcitemdb(data):
     count = 0
 
-    for chunk in chunks(data, size=1):
+    if os.path.isfile('./checked.data'):
+        checked = pickle.load(open('./checked.data', 'rb'))
+    else:
+        checked = set()
+
+    for upc, values in data.items():
+        if upc in checked:
+            print("skip {}".format(upc))
+            continue
+
         r = requests.get('https://api.upcitemdb.com/prod/trial/lookup', params={
-            'upc' : ','.join(filter(lambda x: x, chunk)),
+            'upc' : upc,
         })
 
         if r.status_code == 200:
-            for item in r.json()['items']:
-                print(item['title'])
+            items = r.json()['items']
+            if len(items) == 0:
+                # TODO disable this code
+                print("no product found for {}".format(upc))
+            else:
+                values['Item Name'] = items[0]['title']
+
+            checked.add(upc)
+            pickle.dump(checked, open('./checked.data', 'wb'))
+
+            sleep(1)
         elif r.status_code == 429:
             code = r.json()['code']
-            if code == 'TOO_FAST':
-                print('TOO_FAST')
-            elif code == 'EXCEED_LIMIT':
-                print('EXCEED_LIMIT')
 
-            print("X-RateLimit-Limit: {}".format(r.headers['X-RateLimit-Limit']))
-            print("X-RateLimit-Reset: {}".format(r.headers['X-RateLimit-Reset']))
-            print("X-RateLimit-Remaining: {}".format(r.headers['X-RateLimit-Remaining']))
+            print(code)
+
+            reset = datetime.fromtimestamp(int(r.headers['X-RateLimit-Reset']))
+            delta = reset - datetime.now()
+            print("time to sleep for {} seconds".format(delta.seconds))
+            sleep(delta.seconds)
+        else:
+            print(r.text)
+            break
 
     print('{} products found in upcitemdb.com'.format(count))
 
@@ -79,3 +97,12 @@ def query_upcitemdb(data):
 
 if __name__ == '__main__':
     data = query_upcitemdb(extract_uniques('./data/inventario.csv'))
+
+    with open('./result.csv', 'w') as resultfile:
+        fieldnames = next(iter(data.items()))[1].keys()
+        writer = csv.DictWriter(resultfile, fieldnames=fieldnames)
+
+        writer.writeheader()
+
+        for upc, values in data.items():
+            writer.writerow(values)
